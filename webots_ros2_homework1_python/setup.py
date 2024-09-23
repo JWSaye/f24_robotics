@@ -29,7 +29,11 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'launch.frontend.launch_extension': ['launch_ros = launch_ros'],    
-        'console_scripts': ['webots_ros2_homework1_python = webots_ros2_homework1_python.webots_ros2_homework1_python:main']
+        'console_scripts': [
+            'webots_ros2_homework1_python = webots_ros2_homework1_python.webots_ros2_homework1_python:main',
+            'wall_follow_homework1 = webots_ros2_homework1_python.wall_follow_homework1:main'
+        ],
+
     },
 
 )
