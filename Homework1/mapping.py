@@ -74,4 +74,4 @@ for j in range(1, 5):
     plt.figlegend(['Run 1', 'Run 2', 'Run 3', 'Run 4', 'Run 5'], loc='center right')
 
     # Show the plot
-    plt.show()
+    # plt.show()
