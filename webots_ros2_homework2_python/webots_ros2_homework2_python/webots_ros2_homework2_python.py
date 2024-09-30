@@ -71,6 +71,9 @@ class MovementTrials(Node):
         return None
         
     def timer_callback(self):
+        self.cmd.linear.x = 0.3
+        self.cmd.angular.z = 0.0 
+        self.publisher_.publish(self.cmd)
         return None
  
 def main(args=None):
