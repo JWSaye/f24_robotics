@@ -23,11 +23,12 @@ class Turtlebot3PositionControl(Node):
         ************************************************************"""
         self.odom = Odometry()
         self.last_pose_x = 0.0
+        self.last_pose_theta = 0.0
         self.goal_pose_x = [1.0, 1.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
         self.goal_pose_theta = [0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 180.0, 180.0, 360.0, 360.0]
         self.lin_vel = [0.075, 0.150, 0.075, 0.150, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # m/s
         self.ang_vel = [0.0, 0.0, 0.0, 0.0, 0.52, 2.094, 0.52, 2.094, 0.52, 2.094] # rad/s
-        self.step = 1
+        self.step = 0
         self.get_key_state = False
         self.init_odom_state = False  # To get the initial pose at the beginning
 
@@ -58,6 +59,7 @@ class Turtlebot3PositionControl(Node):
     *******************************************************************************"""
     def odom_callback(self, msg):
         self.last_pose_x = msg.pose.pose.position.x
+        self.last_pose_theta = msg.pose.pose.orientation.z
         self.init_odom_state = True
 
     def update_callback(self):
@@ -68,18 +70,17 @@ class Turtlebot3PositionControl(Node):
         twist = Twist()
         
         # Step 1: Turn
-        if self.step == 1:
+        if self.step > 3:
             path_theta = math.atan2(
                 self.goal_pose_y - self.last_pose_y,
                 self.goal_pose_x - self.last_pose_x)
-            angle = path_theta - self.last_pose_theta
+            angle = self.goal_pose_theta - self.last_pose_theta
             angular_velocity = 0.1  # unit: rad/s
             twist, self.step = Turtlebot3Path.turn(angle, angular_velocity, self.step)
 
         # Step 2: Go Straight
-        elif self.step == 2:
-            linear_velocity = 0.1  # unit: m/s
-            twist, self.step = Turtlebot3Path.go_straight(self.goal_pose_x, linear_velocity, self.step)
+        elif self.step <= 3:
+            twist, self.step = Turtlebot3Path.go_straight(self.goal_pose_x[self.step], self.lin_vel[self.step], self.step)
 
             self.cmd_vel_pub.publish(twist)
 
