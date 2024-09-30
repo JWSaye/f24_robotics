@@ -1,94 +1,100 @@
-import rclpy
-# import the ROS2 python libraries
-from rclpy.node import Node
-# import the Twist module from geometry_msgs interface
-from geometry_msgs.msg import Twist
-# import the LaserScan module from sensor_msgs interface
-from sensor_msgs.msg import LaserScan
-from nav_msgs.msg import Odometry
-# import Quality of Service library, to set the correct profile and reliability in order to read sensor data.
-from rclpy.qos import ReliabilityPolicy, QoSProfile
+#!/usr/bin/env python3
+
 import math
+import numpy
+import sys
+import termios
 
-LINEAR_VEL = 0.22
-STOP_DISTANCE = 0.2
-LIDAR_ERROR = 0.05
-LIDAR_AVOID_DISTANCE = 0.7
-SAFE_STOP_DISTANCE = STOP_DISTANCE + LIDAR_ERROR
+from geometry_msgs.msg import Twist
+from rclpy.node import Node
+from rclpy.qos import QoSProfile
+from nav_msgs.msg import Odometry
 
-class MovementTrials(Node):
+from turtlebot3_example.turtlebot3_position_control.turtlebot3_path import Turtlebot3Path
+
+
+class Turtlebot3PositionControl(Node):
 
     def __init__(self):
-        # Initialize the publisher
-        super().__init__('walk_node')
-        self.scan_cleaned = []
-        self.stall = False
-        self.turtlebot_moving = False
-        self.publisher_ = self.create_publisher(Twist, 'cmd_vel', 10)
-        # self.subscriber1 = self.create_subscription(
-        #     LaserScan,
-        #     '/scan',
-        #     self.listener_callback1,
-        #     QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.subscriber2 = self.create_subscription(
+        super().__init__('turtlebot3_position_control')
+
+        """************************************************************
+        ** Initialise variables
+        ************************************************************"""
+        self.odom = Odometry()
+        self.last_pose_x = 0.0
+        self.goal_pose_x = [1.0, 1.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+        self.goal_pose_theta = [0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 180.0, 180.0, 360.0, 360.0]
+        self.lin_vel = [0.075, 0.150, 0.075, 0.150, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # m/s
+        self.ang_vel = [0.0, 0.0, 0.0, 0.0, 0.52, 2.094, 0.52, 2.094, 0.52, 2.094] # rad/s
+        self.step = 1
+        self.get_key_state = False
+        self.init_odom_state = False  # To get the initial pose at the beginning
+
+        """************************************************************
+        ** Initialise ROS publishers and subscribers
+        ************************************************************"""
+        qos = QoSProfile(depth=10)
+
+        # Initialise publishers
+        self.cmd_vel_pub = self.create_publisher(Twist, 'cmd_vel', qos)
+
+        # Initialise subscribers
+        self.odom_sub = self.create_subscription(
             Odometry,
-            '/odom',
-            self.listener_callback2,
-            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
-        self.laser_forward = 0
-        self.odom_data = 0
-        timer_period = 0.5
-        self.pose_saved=''
-        self.cmd = Twist()
-        self.timer = self.create_timer(timer_period, self.timer_callback)
+            'odom',
+            self.odom_callback,
+            qos)
 
+        """************************************************************
+        ** Initialise timers
+        ************************************************************"""
+        self.update_timer = self.create_timer(0.010, self.update_callback)  # unit: s
 
-    # def listener_callback1(self, msg1):
-    #     #self.get_logger().info('scan: "%s"' % msg1.ranges)
-    #     scan = msg1.ranges
-    #     self.scan_cleaned = []
-    #    
-    #     #self.get_logger().info('scan: "%s"' % scan)
-    #     # Assume 360 range measurements
-    #     for reading in scan:
-    #         if reading == float('Inf'):
-    #             self.scan_cleaned.append(3.5)
-    #         elif math.isnan(reading):
-    #             self.scan_cleaned.append(0.0)
-    #         else:
-    #             self.scan_cleaned.append(reading)
+        self.get_logger().info("Turtlebot3 position control node has been initialised.")
 
+    """*******************************************************************************
+    ** Callback functions and relevant functions
+    *******************************************************************************"""
+    def odom_callback(self, msg):
+        self.last_pose_x = msg.pose.pose.position.x
+        self.init_odom_state = True
 
-    def listener_callback2(self, msg2):
-        position = msg2.pose.pose.position
-        orientation = msg2.pose.pose.orientation
-        (posx, posy, posz) = (position.x, position.y, position.z)
-        (qx, qy, qz, qw) = (orientation.x, orientation.y, orientation.z, orientation.w)
-        self.get_logger().info('self position: {},{},{}'.format(posx,posy,posz))
-        # similarly for twist message if you need
-        self.pose_saved=position
+    def update_callback(self):
+        if self.init_odom_state is True:
+            self.generate_path()
+
+    def generate_path(self):
+        twist = Twist()
         
-        return None
-        
-    def timer_callback(self):
-        self.cmd.linear.x = 0.3
-        self.cmd.angular.z = 0.0 
-        self.publisher_.publish(self.cmd)
-        return None
- 
-def main(args=None):
-    # initialize the ROS communication
-    rclpy.init(args=args)
-    # declare the node constructor
-    walk_node = MovementTrials()
-    # pause the program execution, waits for a request to kill the node (ctrl+c)
-    rclpy.spin(walk_node)
-    # Explicity destroy the node
-    walk_node.destroy_node()
-    # shutdown the ROS communication
-    rclpy.shutdown()
+        # Step 1: Turn
+        if self.step == 1:
+            path_theta = math.atan2(
+                self.goal_pose_y - self.last_pose_y,
+                self.goal_pose_x - self.last_pose_x)
+            angle = path_theta - self.last_pose_theta
+            angular_velocity = 0.1  # unit: rad/s
+            twist, self.step = Turtlebot3Path.turn(angle, angular_velocity, self.step)
 
+        # Step 2: Go Straight
+        elif self.step == 2:
+            linear_velocity = 0.1  # unit: m/s
+            twist, self.step = Turtlebot3Path.go_straight(self.goal_pose_x, linear_velocity, self.step)
 
+            self.cmd_vel_pub.publish(twist)
 
-if __name__ == '__main__':
-    main()
+    def get_key(self):
+        # Print terminal message and get inputs
+        print(terminal_msg)
+        input_x = float(input("Input x: "))
+        input_y = float(input("Input y: "))
+        input_theta = float(input("Input theta: "))
+        while input_theta > 180 or input_theta < -180:
+            self.get_logger().info("Enter a value for theta between -180 and 180")
+            input_theta = input("Input theta: ")
+        input_theta = numpy.deg2rad(input_theta)  # Convert [deg] to [rad]
+
+        settings = termios.tcgetattr(sys.stdin)
+        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+
+        return input_x, input_y, input_theta
