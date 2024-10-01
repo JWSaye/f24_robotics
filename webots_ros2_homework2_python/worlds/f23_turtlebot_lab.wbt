@@ -29,7 +29,7 @@ Viewpoint {
 }
 
 TurtleBot3Burger {
-  translation -7.3611 -6.0432 0
+  translation -7.0 -6.0 0
   controller "<extern>"
   controllerArgs [
     ""
