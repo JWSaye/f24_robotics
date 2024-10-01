@@ -1,15 +1,11 @@
 #!/usr/bin/env python3
 
-import math
-import numpy
-import sys
-import termios
-
 from geometry_msgs.msg import Twist
+import rclpy
 from rclpy.node import Node
 from rclpy.qos import QoSProfile
 from nav_msgs.msg import Odometry
-
+import math
 from turtlebot3_example.turtlebot3_position_control.turtlebot3_path import Turtlebot3Path
 
 
@@ -25,10 +21,10 @@ class Turtlebot3PositionControl(Node):
         self.last_pose_x = 0.0
         self.last_pose_theta = 0.0
         self.goal_pose_x = [1.0, 1.0, 5.0, 5.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]
-        self.goal_pose_theta = [0.0, 0.0, 0.0, 0.0, 10.0, 10.0, 180.0, 180.0, 360.0, 360.0]
+        self.goal_pose_theta = [0.0, 0.0, 0.0, 0.0, 0.17453, 0.17453, 1.0, 1.0, 2.0, 2.0]
         self.lin_vel = [0.075, 0.150, 0.075, 0.150, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] # m/s
         self.ang_vel = [0.0, 0.0, 0.0, 0.0, 0.52, 2.094, 0.52, 2.094, 0.52, 2.094] # rad/s
-        self.step = 0
+        self.step = 8
         self.get_key_state = False
         self.init_odom_state = False  # To get the initial pose at the beginning
 
@@ -71,31 +67,37 @@ class Turtlebot3PositionControl(Node):
         
         # Step 1: Turn
         if self.step > 3:
-            path_theta = math.atan2(
-                self.goal_pose_y - self.last_pose_y,
-                self.goal_pose_x - self.last_pose_x)
-            angle = self.goal_pose_theta - self.last_pose_theta
-            angular_velocity = 0.1  # unit: rad/s
-            twist, self.step = Turtlebot3Path.turn(angle, angular_velocity, self.step)
+            angle = self.goal_pose_theta[self.step] - self.last_pose_theta
+            twist = Twist()
+
+            if math.fabs(angle) > 0.01:  # 0.01 is small enough value
+                if angle >= math.pi:
+                    twist.angular.z = -0.52
+                elif math.pi > angle and angle >= 0:
+                    twist.angular.z = 0.52
+                elif 0 > angle and angle >= -math.pi:
+                    twist.angular.z = -0.52
+                elif angle > -math.pi:
+                    twist.angular.z = 0.52
+                self.get_logger().info("Orientation Z: %f" % self.last_pose_theta)
 
         # Step 2: Go Straight
         elif self.step <= 3:
-            twist, self.step = Turtlebot3Path.go_straight(self.goal_pose_x[self.step], self.lin_vel[self.step], self.step)
+            path = 1 - self.last_pose_x
+            twist = Twist()
 
-            self.cmd_vel_pub.publish(twist)
+            if path > 0.0005:  # 0.01 is small enough value
+                twist.linear.x = 0.075
+                self.get_logger().info("Pose X: %f" % self.last_pose_x)
 
-    def get_key(self):
-        # Print terminal message and get inputs
-        print(terminal_msg)
-        input_x = float(input("Input x: "))
-        input_y = float(input("Input y: "))
-        input_theta = float(input("Input theta: "))
-        while input_theta > 180 or input_theta < -180:
-            self.get_logger().info("Enter a value for theta between -180 and 180")
-            input_theta = input("Input theta: ")
-        input_theta = numpy.deg2rad(input_theta)  # Convert [deg] to [rad]
+        self.cmd_vel_pub.publish(twist)
 
-        settings = termios.tcgetattr(sys.stdin)
-        termios.tcsetattr(sys.stdin, termios.TCSADRAIN, settings)
+def main(args=None):
+    rclpy.init(args=args)
+    turtlebot3_position_control = Turtlebot3PositionControl()
+    rclpy.spin(turtlebot3_position_control)
+    turtlebot3_position_control.destroy_node()
+    rclpy.shutdown()
 
-        return input_x, input_y, input_theta
+if __name__ == '__main__':
+    main()
