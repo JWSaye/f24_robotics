@@ -10,6 +10,7 @@ from nav_msgs.msg import Odometry
 from rclpy.qos import ReliabilityPolicy, QoSProfile
 import math
 from enum import Enum, auto
+import numpy
 
 class TrialTypes(Enum):
     DISTANCE_TRIAL = auto()
@@ -38,7 +39,7 @@ DEGREE_THREE    = 6.28319  # 360 degrees
 TEST_TYPE          = TrialTypes.TURNING_TRIAL
 DISTANCE_TO_TRAVEL = 0.0
 LINEAR_SPEED       = 0.0
-DEGREES_TO_TURN    = DEGREE_THREE
+DEGREES_TO_TURN    = DEGREE_TWO
 TURNING_SPEED      = TRIAL_THREE_TURNING_SPEED
 
 class MovementTrials(Node):
@@ -87,9 +88,13 @@ class MovementTrials(Node):
 
         # Compute distance traveled and degrees turned
         if self.pose_saved != '':
+
+            saved_roll, saved_pitch, saved_yaw = self.euler_from_quaternion(self.orient_saved)
+            new_roll, new_pitch, new_yaw       = self.euler_from_quaternion(orientation)
+
             partial_distance_traveled    = (posx - self.pose_saved.x)
             self.distance_traveled      += abs(partial_distance_traveled)
-            partial_radians_turned       = (qz - self.orient_saved.z)
+            partial_radians_turned       = (new_yaw -saved_yaw)
             self.radians_turned         += abs(partial_radians_turned)
 
             if partial_distance_traveled != 0.0 and TEST_TYPE == TrialTypes.DISTANCE_TRIAL:
@@ -97,7 +102,8 @@ class MovementTrials(Node):
                 self.get_logger().info(f'distance since last report: {partial_distance_traveled}')
                 self.get_logger().info(f'distance traveled: {self.distance_traveled}')
             elif partial_radians_turned != 0.0 and TEST_TYPE == TrialTypes.TURNING_TRIAL:
-                self.get_logger().info('self orientation: {} {} {}'.format(qx, qy, qz))
+                self.get_logger().info('self quant orientation: {} {} {}'.format(qx, qy, qz))
+                self.get_logger().info('self euler orientation: {} {} {}'.format(new_roll, new_pitch, new_yaw))
                 self.get_logger().info(f'radians turned since last report: {partial_radians_turned}')
                 self.get_logger().info(f'radians turned: {self.radians_turned}')
 
@@ -131,6 +137,39 @@ class MovementTrials(Node):
         self.publisher_.publish(self.cmd)
 
         return None
+
+    def euler_from_quaternion(self, quat):
+        '''
+        Convert quaternion (w in last place) to euler roll, pitch, yaw.
+
+        NOTE: This code was taken from the turtlebot3 position example.
+
+        Parameters:
+        -----------
+            quat: The orientation in quaternion form [x, y, z, w].
+
+        Returns:
+            x: The x orientation in euler form (roll in radians)
+            y: The y orientation in euler form (pitch in radians)
+            z: The z orientation in euler form (yaw in radians)
+        '''
+        x = quat.x
+        y = quat.y
+        z = quat.z
+        w = quat.w
+
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = numpy.arctan2(sinr_cosp, cosr_cosp)
+
+        sinp = 2 * (w * y - z * x)
+        pitch = numpy.arcsin(sinp)
+
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = numpy.arctan2(siny_cosp, cosy_cosp)
+
+        return roll, pitch, yaw
 
 def main(args=None):
     # initialize the ROS communication
