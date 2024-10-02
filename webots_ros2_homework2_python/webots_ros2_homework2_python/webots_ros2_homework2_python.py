@@ -87,7 +87,7 @@ class Turtlebot3PositionControl(Node):
             twist = Twist()
 
             if path > 0.0005:  # 0.01 is small enough value
-                twist.linear.x = 0.075
+                twist.linear.x = 0.15
                 self.get_logger().info("Pose X: %f" % self.last_pose_x)
 
         self.cmd_vel_pub.publish(twist)

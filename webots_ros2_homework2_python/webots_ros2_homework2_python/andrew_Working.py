@@ -18,7 +18,7 @@ class TrialTypes(Enum):
 # 75 mm/second
 TRIAL_ONE_LINEAR_SPEED    = 0.075
 # 150 mm/second
-TRIAL_TWO_LINEAR_SPEED    = -0.15
+TRIAL_TWO_LINEAR_SPEED    = 0.15
 
 # 30 degrees/second (in radians)
 TRIAL_THREE_TURNING_SPEED = 0.523599
@@ -36,7 +36,7 @@ DEGREE_THREE    = 6.28319  # 360 degrees
 
 # NOTE: Set these values to execute a test
 TEST_TYPE          = TrialTypes.DISTANCE_TRIAL
-DISTANCE_TO_TRAVEL = DISTANCE_ONE
+DISTANCE_TO_TRAVEL = DISTANCE_TWO
 LINEAR_SPEED       = TRIAL_TWO_LINEAR_SPEED
 DEGREES_TO_TURN    = 0.0
 TURNING_SPEED      = 0.0

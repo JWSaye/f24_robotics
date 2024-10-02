@@ -24,13 +24,14 @@ setup(
     zip_safe=True,
     maintainer='Monica Anderson-UA',
     maintainer_email='anderson@ua.edu',
-    description='Simulation for cs460/560 Homework 1',
+    description='Simulation for cs560 Homework 2',
     license='TODO: License declaration',
     tests_require=['pytest'],
     entry_points={
         'launch.frontend.launch_extension': ['launch_ros = launch_ros'],    
         'console_scripts': [
             'webots_ros2_homework2_python = webots_ros2_homework2_python.webots_ros2_homework2_python:main',
+            'andrew_Working = webots_ros2_homework2_python.andrew_Working:main',
         ],
 
     },

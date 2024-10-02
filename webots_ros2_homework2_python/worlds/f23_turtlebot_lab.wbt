@@ -22,14 +22,14 @@ WorldInfo {
   basicTimeStep 16
 }
 Viewpoint {
-  orientation -0.147 -0.461 0.875 5.58
-  position -7.84 -5.72 0.285
+  orientation -0.5782406174581763 0.576905967504265 0.5769031920344649 2.092993861427734
+  position -10.03115366195585 -1.0074987088867557 5.377838310677109
   exposure 0.5
   follow "TurtleBot3Burger:LDS-01"
 }
 
 TurtleBot3Burger {
-  translation -7.3611 -6.0432 0
+  translation -10 -1 0
   rotation 0.7071067811857275 0 0 0
   controller "<extern>"
   controllerArgs [
