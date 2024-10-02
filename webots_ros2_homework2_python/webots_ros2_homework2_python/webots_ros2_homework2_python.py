@@ -35,11 +35,11 @@ DEGREE_TWO      = 3.14159  # 180 degrees
 DEGREE_THREE    = 6.28319  # 360 degrees
 
 # NOTE: Set these values to execute a test
-TEST_TYPE          = TrialTypes.DISTANCE_TRIAL
-DISTANCE_TO_TRAVEL = DISTANCE_ONE
-LINEAR_SPEED       = TRIAL_ONE_LINEAR_SPEED
-DEGREES_TO_TURN    = 0.0
-TURNING_SPEED      = 0.0
+TEST_TYPE          = TrialTypes.TURNING_TRIAL
+DISTANCE_TO_TRAVEL = 0.0
+LINEAR_SPEED       = 0.0
+DEGREES_TO_TURN    = DEGREE_THREE
+TURNING_SPEED      = TRIAL_THREE_TURNING_SPEED
 
 class MovementTrials(Node):
 
@@ -65,7 +65,7 @@ class MovementTrials(Node):
 
         self.cmd = Twist()
 
-        timer_period = 0.1
+        timer_period = 0.075
         self.timer   = self.create_timer(timer_period, self.timer_callback)
 
     def listener_callback1(self, msg1):
@@ -88,19 +88,18 @@ class MovementTrials(Node):
         # Compute distance traveled and degrees turned
         if self.pose_saved != '':
             partial_distance_traveled    = (posx - self.pose_saved.x)
-            self.distance_traveled      += partial_distance_traveled
+            self.distance_traveled      += abs(partial_distance_traveled)
             partial_radians_turned       = (qz - self.orient_saved.z)
-            self.radians_turned         += partial_radians_turned
+            self.radians_turned         += abs(partial_radians_turned)
 
-            if partial_distance_traveled != 0.0:
+            if partial_distance_traveled != 0.0 and TEST_TYPE == TrialTypes.DISTANCE_TRIAL:
                 self.get_logger().info('self position: {},{},{}'.format(posx,posy,posz))
                 self.get_logger().info(f'distance since last report: {partial_distance_traveled}')
-            elif partial_radians_turned != 0.0:
+                self.get_logger().info(f'distance traveled: {self.distance_traveled}')
+            elif partial_radians_turned != 0.0 and TEST_TYPE == TrialTypes.TURNING_TRIAL:
                 self.get_logger().info('self orientation: {} {} {}'.format(qx, qy, qz))
                 self.get_logger().info(f'radians turned since last report: {partial_radians_turned}')
-        else:
-            self.distance_traveled = posx
-            self.radians_turned    = qz
+                self.get_logger().info(f'radians turned: {self.radians_turned}')
 
         # similarly for twist message if you need
         self.pose_saved   = position
@@ -116,12 +115,12 @@ class MovementTrials(Node):
             self.cmd.linear.x  = LINEAR_SPEED
             self.cmd.angular.z = TURNING_SPEED
 
-            if TrialTypes.DISTANCE_TRIAL:
+            if TrialTypes.DISTANCE_TRIAL == TEST_TYPE:
                 if self.distance_traveled >= DISTANCE_TO_TRAVEL:
                     self.get_logger().info(f'Stopping Test')
                     self.test_completed = True
-            elif TrialTypes.TURNING_TRIAL:
-                if self.degrees_turned_radians >= DEGREES_TO_TURN:
+            elif TrialTypes.TURNING_TRIAL == TEST_TYPE:
+                if self.radians_turned >= DEGREES_TO_TURN:
                     self.get_logger().info('Stopping Test')
                     self.test_completed = True
 
