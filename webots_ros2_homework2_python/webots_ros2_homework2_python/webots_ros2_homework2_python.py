@@ -16,6 +16,8 @@ class TrialTypes(Enum):
     DISTANCE_TRIAL = auto()
     TURNING_TRIAL  = auto()
 
+TIMER_CALLBACK_S = 0.05
+
 # 75 mm/second
 TRIAL_ONE_LINEAR_SPEED    = 0.075
 # 150 mm/second
@@ -45,29 +47,40 @@ TURNING_SPEED      = TRIAL_THREE_TURNING_SPEED
 class MovementTrials(Node):
 
     def __init__(self):
-        # Initialize the publisher
-        super().__init__('walk_node')
 
-        self.distance_traveled = 0
-        self.radians_turned    = 0
-        self.test_completed    = False
+        # initialize the node
+        super().__init__('error_check_node')
 
+        # stores the x and y distance the turtlebot has traveled relative to the
+        # starting position
+        self.x_distance_traveled = 0.0
+        self.y_distance_traveled = 0.0
+
+        # stores the radians turned by the turtlebot
+        self.radians_turned      = 0.0
+
+        # whether or not we are reached the desired distance/angle
+        self.test_completed      = False
+
+        # create publisher to post veloicty commands to the turtlebot
         self.publisher_  = self.create_publisher(Twist, 'cmd_vel', 10)
 
+        # create subscription to the odometry data
         self.subscriber1 = self.create_subscription(
             Odometry,
             '/odom',
             self.listener_callback1,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT))
 
-        # Stores the most recent position and orientation data
+        # stores the most recent position and orientation data
         self.pose_saved   = ''
         self.orient_saved = ''
 
+        # twist object to submit commands
         self.cmd = Twist()
 
-        timer_period = 0.075
-        self.timer   = self.create_timer(timer_period, self.timer_callback)
+        # timer callback setup
+        self.timer   = self.create_timer(TIMER_CALLBACK_S, self.timer_callback)
 
     def listener_callback1(self, msg1):
         '''
@@ -87,24 +100,28 @@ class MovementTrials(Node):
         (qx, qy, qz, qw)   = (orientation.x, orientation.y, orientation.z, orientation.w)
 
         # Compute distance traveled and degrees turned
-        if self.pose_saved != '':
+        if self.pose_saved != '' and self.orient_saved != '':
 
-            saved_roll, saved_pitch, saved_yaw = self.euler_from_quaternion(self.orient_saved)
-            new_roll, new_pitch, new_yaw       = self.euler_from_quaternion(orientation)
+            if TEST_TYPE == TrialTypes.DISTANCE_TRIAL:
 
-            partial_distance_traveled    = (posx - self.pose_saved.x)
-            self.distance_traveled      += abs(partial_distance_traveled)
-            partial_radians_turned       = (new_yaw -saved_yaw)
-            self.radians_turned         += abs(partial_radians_turned)
+                self.x_distance_traveled += abs(posx - self.pose_saved.x)
+                self.y_distance_traveled += abs(posy - self.pose_saved.y)
 
-            if partial_distance_traveled != 0.0 and TEST_TYPE == TrialTypes.DISTANCE_TRIAL:
                 self.get_logger().info('self position: {},{},{}'.format(posx,posy,posz))
-                self.get_logger().info(f'distance since last report: {partial_distance_traveled}')
-                self.get_logger().info(f'distance traveled: {self.distance_traveled}')
-            elif partial_radians_turned != 0.0 and TEST_TYPE == TrialTypes.TURNING_TRIAL:
+                self.get_logger().info(f'distance traveled: ({self.x_distance_traveled}, {self.y_distance_traveled}')
+
+            # we are running an angle test, so only compute the degrees turned
+            elif TEST_TYPE == TrialTypes.TURNING_TRIAL:
+
+                # Get the euler position in
+                saved_roll, saved_pitch, saved_yaw = self.euler_from_quaternion(self.orient_saved)
+                new_roll, new_pitch, new_yaw       = self.euler_from_quaternion(orientation)
+
+                # Determine the radians turned
+                self.radians_turned += abs(abs(new_yaw) - abs(saved_yaw))
+
                 self.get_logger().info('self quant orientation: {} {} {}'.format(qx, qy, qz))
                 self.get_logger().info('self euler orientation: {} {} {}'.format(new_roll, new_pitch, new_yaw))
-                self.get_logger().info(f'radians turned since last report: {partial_radians_turned}')
                 self.get_logger().info(f'radians turned: {self.radians_turned}')
 
         # similarly for twist message if you need
