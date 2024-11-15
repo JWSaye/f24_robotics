@@ -15,12 +15,12 @@ import math
 from   enum import Enum, auto
 
 # the number of duplicate positions before entering error mode
-MAX_DUP_POSITIONS                  = 30
+MAX_DUP_POSITIONS                  = 1000
 
 # distance at which to detect walls and objects
-FORWARD_DETECT_RANGE               = 0.6
+FORWARD_DETECT_RANGE               = 1.5
 LEFT_DETECT_RANGE                  = 0.0
-RIGHT_DETECT_RANGE                 = 0.7
+RIGHT_DETECT_RANGE                 = 1.5
 BACKWARD_DETECT_RANGE              = 0.0
 
 # forward speed configuration
@@ -362,10 +362,6 @@ class WallFollower(Node):
                     self.actual_y_pose += self.y_change_since_last_report
                     self.x_change_since_last_report = 0
                     self.y_change_since_last_report = 0
-                    # write the coordinates to a file
-                    f = open('coordinates.txt', 'a+')
-                    f.write(f'({self.actual_x_pose},{self.actual_y_pose})\n')
-                    f.close()
 
             # if we're are not in the same state, assume we are moving correctly
             # and report the position change.
@@ -376,10 +372,6 @@ class WallFollower(Node):
                 self.actual_y_pose += self.y_change_since_last_report
                 self.x_change_since_last_report = 0
                 self.y_change_since_last_report = 0
-                # write the coordinates to a file
-                f = open('coordinates.txt', 'a+')
-                f.write(f'({self.actual_x_pose},{self.actual_y_pose})\n')
-                f.close()
 
             if WallFollowingStates.STATE_MOVE_FORWARD == self.state:
                 self.get_logger().info('Entering Move Forward State')
@@ -425,11 +417,6 @@ class WallFollower(Node):
             self.actual_y_pose += self.y_change_since_last_report
             self.x_change_since_last_report = 0
             self.y_change_since_last_report = 0
-
-            # write the coordinates to a file
-            f = open('coordinates.txt', 'a+')
-            f.write(f'({self.actual_x_pose},{self.actual_y_pose})\n')
-            f.close()
 
             # move backward in attempt gain ability to turn
             if self.recovery_cycles < 5:
