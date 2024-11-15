@@ -13,9 +13,20 @@ from rclpy.qos import ReliabilityPolicy, QoSProfile
 
 import math
 from   enum import Enum, auto
+import numpy
 
 # the number of duplicate positions before entering error mode
-MAX_DUP_POSITIONS                  = 1000
+MAX_DUP_POSITIONS                  = 15
+
+# the amount of radians to turn when scanning for april tags
+DEGREE_TO_TURN                     = 6.28319  # 360 degrees
+
+# rotate speed configuration
+ROTATE_FORWARD_SPEED               = 0.0
+ROTATE_ANGULAR_SPEED               = 0.6
+
+# the distance to travel before completing a rotation
+ROTATE_DISTANCE                    = 7
 
 # distance at which to detect walls and objects
 FORWARD_DETECT_RANGE               = 1.5
@@ -67,8 +78,10 @@ BACK_RIGHT_INDEX   = 315
 FINAL_BACK_INDEX   = 359
 
 class WallFollowingStates(Enum):
+    # initial wall finding state
+    STATE_WALL_FINDER   = auto()
     # nothing is detected, following wall, or moving past object
-    STATE_MOVE_FORWARD = auto()
+    STATE_MOVE_FORWARD  = auto()
     # turning around a corner due to wall or object
     STATE_TURN_RIGHT    = auto()
     # reached a corner or moving around an object
@@ -77,42 +90,42 @@ class WallFollowingStates(Enum):
     STATE_MOVE_BACKWARD = auto()
     # attempted to go backward unsuccessfully, robot is stuck
     STATE_STUCK         = auto()
+    # state that rotates the turtlebot 360 degrees to search for april tags
+    STATE_ROTATE        = auto()
 
 class WallFollower(Node):
     '''
+    Wall following Ros node.
     '''
 
     def __init__(self):
         '''
         The initializing function of the wall follower node.
         '''
-        # Initialize the publisher via parent class
+        # initialize the publisher via parent class
         super().__init__('wall_follower_node')
 
         # stores most up-to-date odometry and laser scan data
         self.scan_cleaned  = []
-        self.pose          = ''
-        self.prev_pose     = ''
+        self.pose_saved    = ''
+        self.orient_saved  = ''
 
-        self.x_change_since_last_report = 0
-        self.y_change_since_last_report = 0
+        # stores the x and y distance the turtlebot has traveld since last reset
+        self.x_distance_traveled = 0.0
+        self.y_distance_traveled = 0.0
+        # stores the radians turned by the turtlebot since last reset
+        self.radians_turned      = 0.0
 
-        # stores the odometry data to be stored, this should be updated based on
-        # whether we detect we are stuck or not.
-        self.actual_x_pose = 0
-        self.actual_y_pose = 0
+        # variables used to initiate and handle the error recovery state
+        self.duplicate_state_count = 0
+        self.recovery_cycles       = 0
 
-        # variables used in to initiate and handle the error recovery state
-        self.duplicate_count = 0
-        self.recovery_cycles = 0
+        # stores turtlebot state status
+        self.state          = WallFollowingStates.STATE_WALL_FINDER
+        self.previous_state = self.state
 
         # will be used to send commands to the robot
         self.cmd = Twist()
-
-        # the state that the robot is currently in, this value will be
-        # overwritten
-        self.state          = WallFollowingStates.STATE_MOVE_FORWARD
-        self.previous_state = self.state
 
         # initialize the publisher for velcity commands
         self.publisher_  = self.create_publisher(
@@ -121,19 +134,19 @@ class WallFollower(Node):
             10
         )
 
-        # initialize the subscription to laser data
-        self.subscriber1 = self.create_subscription(
+        # subscription to lidar data
+        self.laser_subscription = self.create_subscription(
             LaserScan,
             '/scan',
-            self.listener_callback1,
+            self.lidar_listener_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
 
         # initialize the subscription to odometry data
-        self.subscriber2 = self.create_subscription(
+        self.odometry_subscription = self.create_subscription(
             Odometry,
             '/odom',
-            self.listener_callback2,
+            self.odometry_listener_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
 
@@ -142,70 +155,96 @@ class WallFollower(Node):
         # the time that will cause the callback to execute
         self.timer   = self.create_timer(timer_period, self.timer_callback)
 
-    def listener_callback1(self, msg1):
+    def lidar_listener_callback(self, lidar_msg):
         '''
-        Callback that executes upon new LaserScan data being received. Stores
-        the new data in instance variables for use.
+        Callback that executes upon new LaserScan data being received.
         Parameters:
         -----------
-            msg1: The msg received via the LaserScan subscription.
-        Returns:
-        --------
-            None
+            lidar_msg: The msg received via the LaserScan subscription.
         '''
-        # Erase stale laser range data
+        # erase stale lidar data
         self.scan_cleaned = []
+        # pare the lidar data from the message
+        lidar_scan = lidar_msg.ranges
 
-        # Parse the laser data from the message
-        scan = msg1.ranges
-
-        # Loop through range data for cleaning (assumes 360 degrees)
-        for reading in scan:
-            # If the reading is infiinty set to maximum range
+        # clean lidar scan data
+        for reading in lidar_scan:
             if float('Inf') == reading:
                 self.scan_cleaned.append(3.5)
-            # If the reading is NaN assume range is zero
             elif math.isnan(reading):
                 self.scan_cleaned.append(0.0)
-            # Otherwise assume reading is valid
             else:
                 self.scan_cleaned.append(reading)
 
         return
 
-    def listener_callback2(self, msg2):
+    def odometry_listener_callback(self, odom_msg):
         '''
-        Callback that executes upon new Odometry data being received. Stores
-        the new data in instance varaible for use.
+        Callback that is executed when new odomoetry data is available.
+        Parameters:
+        -----------
+            odom_msg: The new odometry position data.
+        '''
+        # get the current position as reported by the turtlebot
+        position    = odom_msg.pose.pose.position
+        # get the current orientation as reported by the turtlebot
+        orientation = odom_msg.pose.pose.orientation
+
+        # store the current position and orientation data
+        (posx, posy)     = (position.x, position.y)
+        (qx, qy, qz, qw) = (orientation.x, orientation.y, orientation.z, orientation.w)
+
+        # Compute distance traveled and degrees turned
+        if self.pose_saved != '' and self.orient_saved != '':
+
+            # Get the euler position in
+            saved_roll, saved_pitch, saved_yaw = self.euler_from_quaternion(self.orient_saved)
+            new_roll, new_pitch, new_yaw       = self.euler_from_quaternion(orientation)
+
+            self.x_distance_traveled += abs(posx - self.pose_saved.x)
+            self.y_distance_traveled += abs(posy - self.pose_saved.y)
+
+            # Determine the radians turned
+            self.radians_turned += abs(abs(new_yaw) - abs(saved_yaw))
+
+        # similarly for twist message if you need
+        self.pose_saved   = position
+        self.orient_saved = orientation
+
+        return
+
+    def euler_from_quaternion(self, quat):
+        '''
+        Convert quaternion (w in last place) to euler roll, pitch, yaw.
+
+        NOTE: This code was taken from the turtlebot3 position example.
 
         Parameters:
         -----------
-            msg2: The msg revieved via the Odometry subscription.
+            quat: The orientation in quaternion form [x, y, z, w].
+
         Returns:
-        --------
-            None
+            x: The x orientation in euler form (roll in radians)
+            y: The y orientation in euler form (pitch in radians)
+            z: The z orientation in euler form (yaw in radians)
         '''
+        x = quat.x
+        y = quat.y
+        z = quat.z
+        w = quat.w
 
-        # Get the current position and orientation information
-        position    = msg2.pose.pose.position
-        orientation = msg2.pose.pose.orientation
+        sinr_cosp = 2 * (w * x + y * z)
+        cosr_cosp = 1 - 2 * (x * x + y * y)
+        roll = numpy.arctan2(sinr_cosp, cosr_cosp)
 
-        # Parse out the data from the vectors
-        (posx, posy, posz) = (position.x, position.y, position.z)
-        (qx, qy, qz, qw)   = (orientation.x, orientation.y, orientation.z, orientation.w)
+        sinp = 2 * (w * y - z * x)
+        pitch = numpy.arcsin(sinp)
 
-        if self.pose == '':
-            self.prev_pose = position
-        else:
-            self.prev_pose = self.pose
+        siny_cosp = 2 * (w * z + x * y)
+        cosy_cosp = 1 - 2 * (y * y + z * z)
+        yaw = numpy.arctan2(siny_cosp, cosy_cosp)
 
-        # Save the current position data for future use
-        self.pose = position
-
-        self.x_change_since_last_report += self.pose.x - self.prev_pose.x
-        self.y_change_since_last_report += self.pose.y - self.prev_pose.y
-
-        return
+        return roll, pitch, yaw
 
     def object_detected(self, min_foward_lidar, min_left_lidar, min_right_lidar, min_backward_lidar):
         '''
@@ -220,9 +259,9 @@ class WallFollower(Node):
 
     def get_state(self):
         '''
-        Determines what state the robot is in based on the laser scan data.
+        Determines what state the robot is in based on the lidar data.
 
-        @note This functions assumes the lidar data stored in instance variable
+        @note This function assumes the lidar data stored in instance variable
               is up to date and accurate.
 
         Returns:
@@ -335,117 +374,185 @@ class WallFollower(Node):
 
         return WallFollowingStates.STATE_STUCK
 
+    def wall_detected(self):
+        '''
+        Returns whether a wall is detected in front or to the right of the
+        turtlebot.
+        '''
+        wall_detected = False
+
+        front_lidar_data      = self.scan_cleaned[FRONT_LEFT_INDEX:FRONT_RIGHT_INDEX]
+        right_lidar_data      = self.scan_cleaned[FRONT_RIGHT_INDEX:BACK_RIGHT_INDEX]
+
+        max_front_lidar_data  = max(front_lidar_data)
+        max_right_lidar_data  = max(right_lidar_data)
+
+        # if the maximum lidar data is the max lidar range, there is an openeing
+        # signaling a wall has not yet been found
+        if max_front_lidar_data != 3.5:
+            wall_detected = True
+
+        return wall_detected
+
+    def wall_finder_mode(self):
+        '''
+        Initial mode that will run until the turtlebot detects a wall in the
+        front or right side of the turtlebot.
+        '''
+        self.cmd.linear.x  = NORMAL_FORWARD_LINEAR_SPEED
+        self.cmd.angular.z = NORMAL_FORWARD_ANGULAR_SPEED
+
+        self.publisher_.publish(self.cmd)
+
+        # once a wall is detected, this mode should be exited and never run
+        # again
+        if self.wall_detected():
+            self.state = WallFollowingStates.STATE_ROTATE
+
+        return
+
+    def rotate_mode(self):
+        '''
+        Rotates the specifed number of degrees before returning to wall following.
+        '''
+        if (self.x_distance_traveled + self.y_distance_traveled) > ROTATE_DISTANCE:
+            self.x_distance_traveled = 0.0
+            self.y_distance_traveled = 0.0
+            self.radians_turned      = 0.0
+
+        self.cmd.linear.x  = ROTATE_FORWARD_SPEED
+        self.cmd.angular.z = ROTATE_ANGULAR_SPEED
+
+        self.publisher_.publish(self.cmd)
+
+        if (self.radians_turned >= DEGREE_TO_TURN):
+            self.x_distance_traveled = 0.0
+            self.y_distance_traveled = 0.0
+            self.radians_turned      = 0.0
+            self.state = WallFollowingStates.STATE_MOVE_FORWARD
+
+        return
+
+    def wall_follower_mode(self):
+        '''
+        '''
+        # determine which state we are in
+        self.previous_state = self.state
+        self.state          = self.get_state()
+
+        if self.previous_state == self.state:
+
+            self.get_logger().info('Duplicate State Detected')
+            self.duplicate_state_count += 1
+
+        else:
+
+            self.get_logger().info('New State Detected')
+            self.duplicate_state_count = 0
+
+            # only check rotation status if we are sure the turtlebot is not stuck
+            if (self.x_distance_traveled + self.y_distance_traveled) >= ROTATE_DISTANCE:
+                self.state = WallFollowingStates.STATE_ROTATE
+
+        if WallFollowingStates.STATE_MOVE_FORWARD == self.state:
+            self.get_logger().info('Entering Move Forward State')
+            self.cmd.linear.x  = NORMAL_FORWARD_LINEAR_SPEED
+            self.cmd.angular.z = NORMAL_FORWARD_ANGULAR_SPEED
+
+        elif WallFollowingStates.STATE_MOVE_BACKWARD == self.state:
+            self.get_logger().info('Entering Move Backward State')
+            self.cmd.linear.x  = NORMAL_BACKWARD_LINEAR_SPEED
+            self.cmd.angular.z = NORMAL_BACKWARD_ANGULAR_SPEED
+
+        elif WallFollowingStates.STATE_TURN_RIGHT == self.state:
+            self.get_logger().info('Entering Turn Right State')
+            self.cmd.linear.x  = NORMAL_TURNING_RIGHT_LINEAR_SPEED
+            self.cmd.angular.z = NORMAL_TURNING_RIGHT_ANGULAR_SPEED
+
+        elif WallFollowingStates.STATE_TURN_LEFT == self.state:
+            self.get_logger().info('Entering Turn Left State')
+            self.cmd.linear.x  = NORMAL_TURNING_LEFT_LINEAR_SPEED
+            self.cmd.angular.z = NORMAL_TURNING_LEFT_ANGULAR_SPEED
+
+        elif WallFollowingStates.STATE_STUCK == self.state:
+            self.get_logger().info('Entering Stuck State')
+            self.cmd.linear.x  = STUCK_LINEAR_SPEED
+            self.cmd.angular.z = STUCK_ANGULAR_SPEED
+
+        else:
+            self.get_logger().info('Invalid State Detected!')
+            self.cmd.linear.x  = STUCK_LINEAR_SPEED
+            self.cmd.angular.z = STUCK_ANGULAR_SPEED
+
+        self.publisher_.publish(self.cmd)
+
+        return
+
+    def error_recovery_mode(self):
+        '''
+        '''
+        # move backward in attempt gain ability to turn
+        if self.recovery_cycles < 5:
+            self.get_logger().info('Move Backward to Attempt to Free Robot')
+            self.cmd.linear.x  = ERROR_BACKWARD_LINEAR_SPEED
+            self.cmd.angular.z = ERROR_BACKWARD_ANGULAR_SPEED
+            self.publisher_.publish(self.cmd)
+
+        # attempt to turn around object we are stuck at
+        elif self.recovery_cycles < 10:
+            self.get_logger().info('Turn Left to Attempt to Free Robot')
+            self.cmd.linear.x  = ERROR_LEFT_LINEAR_SPEED
+            self.cmd.angular.z = ERROR_LEFT_ANGULAR_SPEED
+            self.publisher_.publish(self.cmd)
+
+        # attempt to move forward past the object we are stuck at
+        elif self.recovery_cycles < 15:
+            self.get_logger().info('Move Forward to Attempt to Free Robot')
+            self.cmd.linear.x  = ERROR_FORWARD_LINEAR_SPEED
+            self.cmd.angular.z = ERROR_FORWARD_ANGULAR_SPEED
+            self.publisher_.publish(self.cmd)
+
+        # return to normal state machine
+        else:
+            self.get_logger().info('Exiting Recovery State')
+            self.duplicate_state_count   = 0
+            self.recovery_cycles         = 0
+
+        self.recovery_cycles += 1
+
+        return
+
     def timer_callback(self):
         '''
         Callback function that will execute once during the specified time
         period. This will collect the laser and odometry data before calling
         the current state's function.
         '''
-        # if we have not yey received any laser data exit immediantely
-        if (len(self.scan_cleaned) == 0) or (self.pose == ''):
+        # if we have not yet received any lidar data exit immediantely
+        if (len(self.scan_cleaned) == 0) or (self.pose_saved == '') or (self.orient_saved == ''):
             return
 
-        # if the same position has not been detected 10 times, continue execution
-        # as normal
-        if self.duplicate_count < MAX_DUP_POSITIONS:
+        # enter wall finder mode
+        if WallFollowingStates.STATE_WALL_FINDER == self.state:
+            self.get_logger().info('running wall finder mode')
+            self.wall_finder_mode()
 
-            # determine which state we are in
-            self.previous_state = self.state
-            self.state          = self.get_state()
+        # enter rotation mode
+        elif WallFollowingStates.STATE_ROTATE == self.state:
+            self.get_logger().info('running rotate mode')
+            self.rotate_mode()
 
-            # if we are in the same state, don't report position change if so
-            if self.previous_state == self.state:
-                self.get_logger().info('Duplicate State Detected')
-                self.duplicate_count += 1
-                if self.duplicate_count < MAX_DUP_POSITIONS / 2:
-                    self.actual_x_pose += self.x_change_since_last_report
-                    self.actual_y_pose += self.y_change_since_last_report
-                    self.x_change_since_last_report = 0
-                    self.y_change_since_last_report = 0
+        # enter wall following mode
+        elif MAX_DUP_POSITIONS >= self.duplicate_state_count:
 
-            # if we're are not in the same state, assume we are moving correctly
-            # and report the position change.
-            else:
-                self.get_logger().info('New State Detected')
-                self.duplicate_count = 0
-                self.actual_x_pose += self.x_change_since_last_report
-                self.actual_y_pose += self.y_change_since_last_report
-                self.x_change_since_last_report = 0
-                self.y_change_since_last_report = 0
+            self.get_logger().info('running wall follower mode')
+            self.wall_follower_mode()
 
-            if WallFollowingStates.STATE_MOVE_FORWARD == self.state:
-                self.get_logger().info('Entering Move Forward State')
-                self.cmd.linear.x  = NORMAL_FORWARD_LINEAR_SPEED
-                self.cmd.angular.z = NORMAL_FORWARD_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            elif WallFollowingStates.STATE_MOVE_BACKWARD == self.state:
-                self.get_logger().info('Entering Move Backward State')
-                self.cmd.linear.x  = NORMAL_BACKWARD_LINEAR_SPEED
-                self.cmd.angular.z = NORMAL_BACKWARD_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            elif WallFollowingStates.STATE_TURN_RIGHT == self.state:
-                self.get_logger().info('Entering Turn Right State')
-                self.cmd.linear.x  = NORMAL_TURNING_RIGHT_LINEAR_SPEED
-                self.cmd.angular.z = NORMAL_TURNING_RIGHT_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            elif WallFollowingStates.STATE_TURN_LEFT == self.state:
-                self.get_logger().info('Entering Turn Left State')
-                self.cmd.linear.x  = NORMAL_TURNING_LEFT_LINEAR_SPEED
-                self.cmd.angular.z = NORMAL_TURNING_LEFT_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            elif WallFollowingStates.STATE_STUCK == self.state:
-                self.get_logger().info('Entering Stuck State')
-                self.cmd.linear.x  = STUCK_LINEAR_SPEED
-                self.cmd.angular.z = STUCK_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            else:
-                self.get_logger().info('Invalid State Detected!')
-
+        # enter error recovery mode
         else:
 
-            # attempting to recover, reset change values
-            if self.recovery_cycles == 0:
-                self.x_change_since_last_report = 0
-                self.y_change_since_last_report = 0
-
-            self.actual_x_pose += self.x_change_since_last_report
-            self.actual_y_pose += self.y_change_since_last_report
-            self.x_change_since_last_report = 0
-            self.y_change_since_last_report = 0
-
-            # move backward in attempt gain ability to turn
-            if self.recovery_cycles < 5:
-                self.get_logger().info('Move Backward to Attempt to Free Robot')
-                self.cmd.linear.x  = ERROR_BACKWARD_LINEAR_SPEED
-                self.cmd.angular.z = ERROR_BACKWARD_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            # attempt to turn around object we are stuck at
-            elif self.recovery_cycles < 10:
-                self.get_logger().info('Turn Left to Attempt to Free Robot')
-                self.cmd.linear.x  = ERROR_LEFT_LINEAR_SPEED
-                self.cmd.angular.z = ERROR_LEFT_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            # attempt to move forward past the object we are stuck at
-            elif self.recovery_cycles < 15:
-                self.get_logger().info('Move Forward to Attempt to Free Robot')
-                self.cmd.linear.x  = ERROR_FORWARD_LINEAR_SPEED
-                self.cmd.angular.z = ERROR_FORWARD_ANGULAR_SPEED
-                self.publisher_.publish(self.cmd)
-
-            # return to normal state machine
-            else:
-                self.get_logger().info('Exiting Recovery State')
-                self.duplicate_count         = 0
-                self.recovery_cycles         = 0
-
-            self.recovery_cycles += 1
+            self.get_logger().info('running error recovery mode')
+            self.error_recovery_mode()
 
         return
 
