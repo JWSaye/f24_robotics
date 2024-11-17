@@ -13,6 +13,7 @@ EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/project
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/lights/protos/CeilingLight.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/objects/cabinet/protos/CabinetHandle.proto"
 EXTERNPROTO "https://raw.githubusercontent.com/cyberbotics/webots/R2023b/projects/appearances/protos/PaintedWood.proto"
+EXTERNPROTO "https://raw.githubusercontent.com/monicadelaine/webots_apriltag/master/apriltags/protos/tag36_11_00000.proto"
 
 WorldInfo {
   info [
@@ -26,8 +27,12 @@ Viewpoint {
   exposure 0.5
   follow "TurtleBot3Burger:LDS-01"
 }
+tag36_11_00000{
+  rotation 0 0 1 0
+  translation -7.1 -1.14 0.15
+}
 TurtleBot3Burger {
-  translation -7.3611 -6.0432 0
+  translation -7.3611 -1.1 0
   controller "<extern>"
   controllerArgs [
     ""
@@ -35,6 +40,18 @@ TurtleBot3Burger {
   extensionSlot [
     Solid {
       name "imu_link"
+    }
+    Camera {
+      translation 0.06 0 0
+      children [
+        Pose {
+          translation 0 0 0
+          rotation 0 1 0 1.57
+        }
+      ]
+      width 3280
+      height 2464
+      fieldOfView 1
     }
     GPS {
     }

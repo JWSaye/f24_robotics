@@ -14,6 +14,9 @@ from rclpy.qos import ReliabilityPolicy, QoSProfile
 import math
 from   enum import Enum, auto
 import numpy
+import os
+from apriltag_msgs.msg import AprilTagDetectionArray
+import datetime
 
 # the number of duplicate positions before entering error mode
 MAX_DUP_POSITIONS                  = 15
@@ -149,12 +152,53 @@ class WallFollower(Node):
             self.odometry_listener_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
+        
+        # Initialize the AprilTag subscriber
+        self.apriltag_subscription = self.create_subscription(
+            AprilTagDetectionArray,
+            '/detections',
+            self.apriltag_callback,
+            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+        )
+
+        # Set up logging for AprilTag detections
+        self.log_file = open("apriltag_detections.log", "a")
+
+        # Launch AprilTag nodes
+        self.launch_apriltag_nodes()
 
         # amount of time between checks for updates
         timer_period = 0.5
         # the time that will cause the callback to execute
         self.timer   = self.create_timer(timer_period, self.timer_callback)
 
+    def launch_apriltag_nodes(self):
+        # Start the camera and AprilTag node
+        '''os.system("ros2 run apriltag_ros apriltag_node --ros-args "
+                  "-r image_rect:=/image_raw -r camera_info:=/camera_info "
+                  f"--params-file /opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml &")'''
+
+    def apriltag_callback(self, msg):
+        # Callback for processing AprilTag detections
+        for detection in msg.detections:
+            tag_id = detection.id[0]  # Assuming a single tag per detection
+            position = detection.pose.pose.pose.position
+            orientation = detection.pose.pose.pose.orientation
+
+            # Log the detection
+            log_entry = (f"{datetime.datetime.now()} - Detected Tag ID: {tag_id}, "
+                         f"Position: (x: {position.x}, y: {position.y}, z: {position.z}), "
+                         f"Orientation: (x: {orientation.x}, y: {orientation.y}, "
+                         f"z: {orientation.z}, w: {orientation.w})\n")
+            self.log_file.write(log_entry)
+            self.log_file.flush()
+            self.get_logger().info(log_entry)
+
+    def destroy_node(self):
+        # Close the log file when shutting down
+        self.log_file.close()
+        super().destroy_node()
+        
     def lidar_listener_callback(self, lidar_msg):
         '''
         Callback that executes upon new LaserScan data being received.
