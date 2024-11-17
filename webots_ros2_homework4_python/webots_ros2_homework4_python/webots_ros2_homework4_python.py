@@ -152,7 +152,7 @@ class WallFollower(Node):
             self.odometry_listener_callback,
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
-        
+
         # Initialize the AprilTag subscriber
         self.apriltag_subscription = self.create_subscription(
             AprilTagDetectionArray,
@@ -174,22 +174,18 @@ class WallFollower(Node):
 
     def launch_apriltag_nodes(self):
         # Start the camera and AprilTag node
-        '''os.system("ros2 run apriltag_ros apriltag_node --ros-args "
-                  "-r image_rect:=/image_raw -r camera_info:=/camera_info "
-                  f"--params-file /opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml &")'''
+        os.system("ros2 run v4l2_camera v4l2_camera_node &")
+        os.system("ros2 run apriltag_ros apriltag_node --ros-args -r image_rect:=/image_raw -r camera_info:=/camera_info --params-file /opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml &")
 
     def apriltag_callback(self, msg):
         # Callback for processing AprilTag detections
         for detection in msg.detections:
-            tag_id = detection.id[0]  # Assuming a single tag per detection
-            position = detection.pose.pose.pose.position
-            orientation = detection.pose.pose.pose.orientation
+            tag_id = detection.id  # Assuming a single tag per detection
+            position = detection.centre
 
             # Log the detection
             log_entry = (f"{datetime.datetime.now()} - Detected Tag ID: {tag_id}, "
-                         f"Position: (x: {position.x}, y: {position.y}, z: {position.z}), "
-                         f"Orientation: (x: {orientation.x}, y: {orientation.y}, "
-                         f"z: {orientation.z}, w: {orientation.w})\n")
+                         f"Position: (x: {position.x}, y: {position.y}")
             self.log_file.write(log_entry)
             self.log_file.flush()
             self.get_logger().info(log_entry)
@@ -198,7 +194,7 @@ class WallFollower(Node):
         # Close the log file when shutting down
         self.log_file.close()
         super().destroy_node()
-        
+
     def lidar_listener_callback(self, lidar_msg):
         '''
         Callback that executes upon new LaserScan data being received.
