@@ -42,7 +42,9 @@ ROTATE_FORWARD_SPEED               = 0.0
 ROTATE_ANGULAR_SPEED               = 0.6
 
 # the distance to travel before completing a rotation
-ROTATE_DISTANCE                    = 7
+ROTATE_DISTANCE                    = 5.0
+
+WALL_DETECT_RANGE                  = 1.0
 
 # distance at which to detect walls and objects
 FORWARD_DETECT_RANGE               = 1.0
@@ -542,7 +544,7 @@ class WallFollower(Node):
 
         # if the maximum lidar data is the max lidar range, there is an opening
         # signaling a wall has not yet been found
-        if max_front_lidar_data <= 1:
+        if max_front_lidar_data <= WALL_DETECT_RANGE:
             wall_detected = True
 
         return wall_detected
