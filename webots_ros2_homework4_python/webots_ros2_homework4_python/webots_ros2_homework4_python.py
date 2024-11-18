@@ -22,13 +22,11 @@ class RunModes(Enum):
     MODE_WEBOTS = auto()
     # inverse run mode
     MODE_INVERSE = auto()
-    # mirror run mode
-    MODE_MIRROR  = auto()
 
 # configures which mode we are in
-MODE = RunModes.MODE_WEBOTS
+MODE = RunModes.MODE_INVERSE
 
-if MODE != RunModes.MODE_WEBOTS:
+if MODE == RunModes.MODE_INVERSE:
     from apriltag_msgs.msg import AprilTagDetectionArray
 
 # the number of duplicate positions before entering error mode
@@ -42,14 +40,14 @@ ROTATE_FORWARD_SPEED               = 0.0
 ROTATE_ANGULAR_SPEED               = 0.6
 
 # the distance to travel before completing a rotation
-ROTATE_DISTANCE                    = 5.0
+ROTATE_DISTANCE                    = 2.0
 
-WALL_DETECT_RANGE                  = 1.0
+WALL_DETECT_RANGE                  = 1.5
 
 # distance at which to detect walls and objects
 FORWARD_DETECT_RANGE               = 1.0
 LEFT_DETECT_RANGE                  = 0.0
-RIGHT_DETECT_RANGE                 = 1.5
+RIGHT_DETECT_RANGE                 = 2.0
 BACKWARD_DETECT_RANGE              = 0.0
 
 # forward speed configuration
@@ -96,26 +94,15 @@ WEBOTS_BACK_RIGHT_INDEX   = 315
 WEBOTS_FINAL_BACK_INDEX   = 359
 
 # real world inversed indexes
-INVERSE_FRONT_LEFT_INDEX       = 315
-INVERSE_FRONT_LEFT_STOP_INDEX  = 359
-INVERSE_FRONT_RIGHT_INDEX      = 0
-INVERSE_FRONT_RIGHT_STOP_INDEX = 45
-INVERSE_RIGHT_INDEX            = 90
-INVERSE_BACK_RIGHT_INDEX       = 135
+INVERSE_FRONT_LEFT_INDEX       = 0
+INVERSE_FRONT_LEFT_STOP_INDEX  = 45
+INVERSE_FRONT_RIGHT_INDEX      = 315
+INVERSE_FRONT_RIGHT_STOP_INDEX = 359
+INVERSE_RIGHT_INDEX            = 270
+INVERSE_BACK_RIGHT_INDEX       = 225
 INVERSE_BACK_INDEX             = 180
-INVERSE_BACK_LEFT_INDEX        = 225
-INVERSE_LEFT_INDEX             = 270
-
-# real world mirrored indexes
-MIRROR_FRONT_INDEX           = 180
-MIRROR_FRONT_RIGHT_INDEX     = 135
-MIRROR_RIGHT_INDEX           = 90
-MIRROR_BACK_LEFT_INDEX       = 315
-MIRROR_BACK_LEFT_STOP_INDEX  = 359
-MIRROR_BACK_RIGHT_INDEX      = 0
-MIRROR_BACK_RIGHT_STOP_INDEX = 45
-MIRROR_LEFT_INDEX            = 270
-MIRROR_FRONT_LEFT_INDEX      = 225
+INVERSE_BACK_LEFT_INDEX        = 135
+INVERSE_LEFT_INDEX             = 90
 
 FOUND_TAGS = []
 
@@ -134,17 +121,6 @@ class WallFollowingStates(Enum):
     STATE_STUCK         = auto()
     # state that rotates the turtlebot 360 degrees to search for april tags
     STATE_ROTATE        = auto()
-
-class RunModes(Enum):
-    # webots run mode
-    MODE_WEBOTS = auto()
-    # inverse run mode
-    MODE_INVERSE = auto()
-    # mirror run mode
-    MODE_MIRROR  = auto()
-
-# configures which mode we are in
-MODE = RunModes.MODE_WEBOTS
 
 class WallFollower(Node):
     '''
@@ -204,7 +180,7 @@ class WallFollower(Node):
         )
 
 
-        if MODE != RunModes.MODE_WEBOTS:
+        if MODE == RunModes.MODE_INVERSE:
             # Initialize the AprilTag subscriber
             self.apriltag_subscription = self.create_subscription(
                 AprilTagDetectionArray,
@@ -385,20 +361,12 @@ class WallFollower(Node):
             back_lidar_data       = back_left_lidar_data + back_right_lidar_data
 
         elif MODE == RunModes.MODE_INVERSE:
-            left_lidar_data        = self.scan_cleaned[INVERSE_BACK_LEFT_INDEX:INVERSE_FRONT_LEFT_INDEX]
-            right_lidar_data       = self.scan_cleaned[INVERSE_FRONT_RIGHT_STOP_INDEX:INVERSE_BACK_RIGHT_INDEX]
+            left_lidar_data        = self.scan_cleaned[INVERSE_FRONT_LEFT_STOP_INDEX:INVERSE_BACK_LEFT_INDEX]
+            right_lidar_data       = self.scan_cleaned[INVERSE_BACK_RIGHT_INDEX:INVERSE_FRONT_RIGHT_INDEX]
             front_left_lidar_data  = self.scan_cleaned[INVERSE_FRONT_LEFT_INDEX:INVERSE_FRONT_LEFT_STOP_INDEX]
             front_right_lidar_data = self.scan_cleaned[INVERSE_FRONT_RIGHT_INDEX:INVERSE_FRONT_RIGHT_STOP_INDEX]
             front_lidar_data       = front_left_lidar_data + front_right_lidar_data
-            back_lidar_data        = self.scan_cleaned[INVERSE_BACK_RIGHT_INDEX:INVERSE_BACK_LEFT_INDEX]
-
-        elif MODE == RunModes.MODE_MIRROR:
-            left_lidar_data       = self.scan_cleaned[MIRROR_FRONT_LEFT_INDEX:MIRROR_BACK_LEFT_INDEX]
-            right_lidar_data      = self.scan_cleaned[MIRROR_BACK_RIGHT_STOP_INDEX:MIRROR_FRONT_RIGHT_INDEX]
-            front_lidar_data      = self.scan_cleaned[MIRROR_FRONT_RIGHT_INDEX:MIRROR_FRONT_LEFT_INDEX]
-            back_left_lidar_data  = self.scan_cleaned[MIRROR_BACK_LEFT_INDEX:MIRROR_BACK_LEFT_STOP_INDEX]
-            back_right_lidar_data = self.scan_cleaned[MIRROR_BACK_RIGHT_INDEX:MIRROR_BACK_RIGHT_STOP_INDEX]
-            back_lidar_data       = back_left_lidar_data + back_right_lidar_data
+            back_lidar_data        = self.scan_cleaned[INVERSE_BACK_LEFT_INDEX:INVERSE_BACK_RIGHT_INDEX]
 
         return left_lidar_data, right_lidar_data, front_lidar_data, back_lidar_data
 
@@ -422,15 +390,6 @@ class WallFollower(Node):
         left_lidar_data  = [i for i in left_lidar_data if i != 0.0]
         back_lidar_data  = [i for i in back_lidar_data if i != 0.0]
         front_lidar_data = [i for i in front_lidar_data if i != 0.0]
-
-        print("Back Lidar Data:")
-        print(str(back_lidar_data))
-        print("Front Lidar Data:")
-        print(str(front_lidar_data))
-        print("Right Lidar Data:")
-        print(str(back_lidar_data))
-        print("Left Lidar Data:")
-        print(str(back_lidar_data))
 
         # Get the minimum data to determine robot's state
         min_left_lidar_data  = min(left_lidar_data)
@@ -539,8 +498,6 @@ class WallFollower(Node):
         left_lidar_data, right_lidar_data, front_lidar_data, back_lidar_data = self.get_lidar_data()
 
         max_front_lidar_data  = max(front_lidar_data)
-
-        print(str(front_lidar_data))
 
         # if the maximum lidar data is the max lidar range, there is an opening
         # signaling a wall has not yet been found
