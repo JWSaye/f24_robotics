@@ -27,8 +27,8 @@ def generate_launch_description():
         name='apriltag',
         package='apriltag_ros',
         executable='apriltag_ros',
-        parameters='',
-        remappings=[('/image_rect', '/image_raw'), ('/camera_info', '/camera_info')]
+        parameters=['/opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml'],
+        remappings=[('/image_rect', '/image_raw'), ('/camera_info', '/camera_info')],
         output='screen'
     )
 
