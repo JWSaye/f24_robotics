@@ -3,7 +3,7 @@
 
 ### TO INSTALL PACKAGE FOR ASSIGNMENT 
 
-1. Set up environment variables for ROS. Make sure to replace '/home/rpi/shared' with your own shared folder location
+1. Set up environment variables for ROS.
 <pre>
 source /opt/ros/humble/setup.bash
 </pre>
@@ -24,10 +24,10 @@ export WEBOTS_HOME=/mnt/c/Program\ Files/Webots
 
 3. Clone your fork
 <pre>
-git clone <your github url for this repository>
+git clone git@github.com:JWSaye/f24_robotics.git
 </pre>
 
-4. Make the package (for python, it really just installs the files
+4. Make the package
 <pre>
 cd f24_robotics
 colcon build
@@ -38,51 +38,27 @@ colcon build
 source install/setup.bash
 </pre>
 
-6. Start webots simulation with connect back to ROS in the virtual machine
+### FOR SIMULATION USE
+Start webots simulation with connect back to ROS in the virtual machine
 <pre>
 ros2 launch webots_ros2_homework1_python f23_robotics_1_launch.py
 </pre>
 
-
-### TEST THE CONNECTION BETWEEN ROS2 AND WEBOTS
-
-Test the connection between webots and ROS, use a ROS based ASCII keyboard to move the simulated robot in Webots
-
-1. Open another terminal
-
-2. Redo the source commands (you can add to your bash to execute it automatically each time) 
+### FOR TURTLEBOT3 USE
+Start the turtlebot bringup script
 <pre>
-source /opt/ros/humble/setup.bash
-source install/setup.bash
+ros2 launch turtlebot3_bringup robot.launch.py
 </pre>
 
-3. Run the ROS-based keyboard
-<pre>
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-</pre>
+### RUN CONTROLLER
+In a new terminal, move into the f24_robotics directory and source the install script again.
 
-
-### TO VISUALIZE LASER DATA
-
-1. Open another terminal
-
-2. Redo the source commands (you can add to your bash to execute it automatically each time) 
-<pre>
-source /opt/ros/humble/setup.bash
-source install/setup.bash
-</pre>
-
-3. Run the ROS-based keyboard
-<pre>
-ros2 run teleop_twist_keyboard teleop_twist_keyboard
-</pre>
-<pre>
-  rviz2
-</pre>
-
-### RUN SAMPLE CONTROLLER
-
+Next, run the controller code:
 <pre>
 ros2 run webots_ros2_homework1_python webots_ros2_homework1_python
 </pre>
 
+At the end of the run, the log of AprilTag detections will be in the file:
+<pre>
+  ~/f24_robotics/apriltag_detections.log
+</pre>
