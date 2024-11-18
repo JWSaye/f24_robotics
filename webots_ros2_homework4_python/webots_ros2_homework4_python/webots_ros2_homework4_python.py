@@ -26,7 +26,9 @@ class RunModes(Enum):
 # configures which mode we are in
 MODE = RunModes.MODE_INVERSE
 
-if MODE == RunModes.MODE_INVERSE:
+LAUNCH_APRILTAG_NODES = True
+
+if LAUNCH_APRILTAG_NODES:
     from apriltag_msgs.msg import AprilTagDetectionArray
 
 # the number of duplicate positions before entering error mode
@@ -179,8 +181,7 @@ class WallFollower(Node):
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
 
-
-        if MODE == RunModes.MODE_INVERSE:
+        if LAUNCH_APRILTAG_NODES:
             # Initialize the AprilTag subscriber
             self.apriltag_subscription = self.create_subscription(
                 AprilTagDetectionArray,
@@ -369,6 +370,32 @@ class WallFollower(Node):
             back_lidar_data        = self.scan_cleaned[INVERSE_BACK_LEFT_INDEX:INVERSE_BACK_RIGHT_INDEX]
 
         return left_lidar_data, right_lidar_data, front_lidar_data, back_lidar_data
+
+    def obstacle_detected(self):
+        '''
+        Detects if there is an obstacle directly in front of the turtlebot that
+        is not a wall.
+        '''
+        front_lidar_data = []
+        obstacle_detected = False
+
+        if MODE == RunModes.MODE_WEBOTS:
+            front_lidar_data       = self.scan_cleaned[WEBOTS_FRONT_LEFT_INDEX:WEBOTS_FRONT_RIGHT_INDEX]
+
+        elif MODE == RunModes.MODE_INVERSE:
+            front_left_lidar_data  = self.scan_cleaned[INVERSE_FRONT_LEFT_INDEX:INVERSE_FRONT_LEFT_STOP_INDEX]
+            front_right_lidar_data = self.scan_cleaned[INVERSE_FRONT_RIGHT_INDEX:INVERSE_FRONT_RIGHT_STOP_INDEX]
+            front_lidar_data       = front_left_lidar_data.reverse() + front_right_lidar_data
+
+        left_narrow_front_lidar_data = front_lidar_data[0:29]
+        narrow_front_lidar_data      = front_lidar_data[30:60]
+        right_narrow_front_lidar_data = front_lidar_data[61:89]
+
+        if max(left_narrow_front_lidar_data) > max(narrow_front_lidar_data) * 2 or \
+           max(right_narrow_front_lidar_data) > max(narrow_front_lidar_data) * 2:
+           obstacle_detected = True
+
+        return obstacle_detected
 
     def get_state(self):
         '''
