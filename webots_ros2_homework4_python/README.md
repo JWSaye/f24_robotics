@@ -62,3 +62,15 @@ At the end of the run, the log of AprilTag detections will be in the file:
 <pre>
   ~/f24_robotics/apriltag_detections.log
 </pre>
+
+### Algorithm Explanation
+While deciding what the best methodology would be for finding as many AprilTags as possible in a short amount of time, we considered if using a map would be useful. We ended
+up deciding that the map would not add significant value to being able to find as many tags as possible. With the belief that the majority of the tags will be on the outer walls,
+we decided a wall following algorithm would be sufficient to get a good score for the search and rescue. We tested the AprilTag detection in the lab to get a feel for how far away
+and at what angles in the camera's field of view we could have a tag be present and get detected. We came to the results of about 5 feet and 30 degrees of view to be safe. This led
+us to develop a wall following algorithm to meet these specifications.
+
+The algorithm begins in a state where it is searching for a wall to follow. It uses a range of lidar scans within its front and right sides to detect if there is an object within
+about a meter of it. If the entire range of the lidar that is sampled is not consistant with the minimum reading, it sees it as an obstacle in the way and attempts to move around it. If
+the whole range of lidars is simalarly small, we call that a wall. When it first detects a wall, the robot spins about 360 degrees to be able to capture any 
+
