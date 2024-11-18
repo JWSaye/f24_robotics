@@ -99,8 +99,6 @@ def generate_launch_description():
         nodes_to_start= ros_control_spawners
     )
 
-
-
     return LaunchDescription([
         DeclareLaunchArgument(
             'world',

@@ -14,10 +14,6 @@ from rclpy.qos import ReliabilityPolicy, QoSProfile
 import math
 from   enum import Enum, auto
 import numpy
-import os
-from apriltag_msgs.msg import AprilTagDetectionArray
-import datetime
-import statistics
 
 # the number of duplicate positions before entering error mode
 MAX_DUP_POSITIONS                  = 15
@@ -33,13 +29,13 @@ ROTATE_ANGULAR_SPEED               = 0.6
 ROTATE_DISTANCE                    = 7
 
 # distance at which to detect walls and objects
-FORWARD_DETECT_RANGE               = 1.0
+FORWARD_DETECT_RANGE               = 1.5
 LEFT_DETECT_RANGE                  = 0.0
 RIGHT_DETECT_RANGE                 = 1.5
 BACKWARD_DETECT_RANGE              = 0.0
 
 # forward speed configuration
-NORMAL_FORWARD_LINEAR_SPEED        = 0.125
+NORMAL_FORWARD_LINEAR_SPEED        = 0.075
 NORMAL_FORWARD_ANGULAR_SPEED       = 0.0
 
 # turning left speed configuration
@@ -71,25 +67,15 @@ ERROR_BACKWARD_LINEAR_SPEED       = -0.1
 ERROR_BACKWARD_ANGULAR_SPEED      = 0.0
 
 # The indexes of various position in the laser scan array
-#INITIAL_BACK_INDEX = 0
-#BACK_LEFT_INDEX    = 45
-#LEFT_INDEX         = 90
-#FRONT_LEFT_INDEX   = 135
-#FRONT_INDEX        = 180
-#FRONT_RIGHT_INDEX  = 225
-#RIGHT_INDEX        = 270
-#BACK_RIGHT_INDEX   = 315
-#FINAL_BACK_INDEX   = 359
-
-FRONT_LEFT       = 345
-FRONT_LEFT_STOP  = 359
-FRONT_RIGHT      = 0
-FRONT_RIGHT_STOP = 15
-
-RIGHT_FRONT = 75
-RIGHT_BACK  = 105
-
-FOUND_TAGS = []
+INITIAL_BACK_INDEX = 0
+BACK_LEFT_INDEX    = 45
+LEFT_INDEX         = 90
+FRONT_LEFT_INDEX   = 135
+FRONT_INDEX        = 180
+FRONT_RIGHT_INDEX  = 225
+RIGHT_INDEX        = 270
+BACK_RIGHT_INDEX   = 315
+FINAL_BACK_INDEX   = 359
 
 class WallFollowingStates(Enum):
     # initial wall finding state
@@ -164,48 +150,10 @@ class WallFollower(Node):
             QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
         )
 
-        # Initialize the AprilTag subscriber
-        self.apriltag_subscription = self.create_subscription(
-            AprilTagDetectionArray,
-            '/detections',
-            self.apriltag_callback,
-            QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
-        )
-
-        # Set up logging for AprilTag detections
-        self.log_file = open("apriltag_detections.log", "a")
-
-        # Launch AprilTag nodes
-        self.launch_apriltag_nodes()
-
         # amount of time between checks for updates
         timer_period = 0.5
         # the time that will cause the callback to execute
         self.timer   = self.create_timer(timer_period, self.timer_callback)
-
-    def launch_apriltag_nodes(self):
-        # Start the camera and AprilTag node
-        os.system("ros2 run v4l2_camera v4l2_camera_node &")
-        os.system("ros2 run apriltag_ros apriltag_node --ros-args -r image_rect:=/image_raw -r camera_info:=/camera_info --params-file /opt/ros/humble/share/apriltag_ros/cfg/tags_36h11.yaml &")
-
-    def apriltag_callback(self, msg):
-        # Callback for processing AprilTag detections
-        for detection in msg.detections:
-            if detection.id not in FOUND_TAGS:
-                tag_id = detection.id  # Assuming a single tag per detection
-                FOUND_TAGS.append(tag_id)
-                position = detection.centre
-
-            	# Log the detection
-                log_entry = (f"{datetime.datetime.now()} - Detected Tag ID: {tag_id}, Position: (x: {position.x}, y: {position.y}")
-                self.log_file.write(log_entry)
-                self.log_file.flush()
-                self.get_logger().info(log_entry)
-
-    def destroy_node(self):
-        # Close the log file when shutting down
-        self.log_file.close()
-        super().destroy_node()
 
     def lidar_listener_callback(self, lidar_msg):
         '''
@@ -224,11 +172,7 @@ class WallFollower(Node):
             if float('Inf') == reading:
                 self.scan_cleaned.append(3.5)
             elif math.isnan(reading):
-                self.scan_cleaned.append(3.5)
-            elif reading > 3.5:
-                self.scan_cleaned.append(3.5)
-            elif reading == 0:
-                self.scan_cleaned.append(3.5) 
+                self.scan_cleaned.append(0.0)
             else:
                 self.scan_cleaned.append(reading)
 
@@ -327,29 +271,12 @@ class WallFollower(Node):
                 currently in.
         '''
         # Get the lidar data for the different regions
-        #right_lidar_data        = self.scan_cleaned[BACK_LEFT_INDEX:FRONT_LEFT_INDEX]
-        left_lidar_data         = self.scan_cleaned[0:1]
-        back_lidar_data         = self.scan_cleaned[0:1]
-        #front_left_lidar_data   = self.scan_cleaned[INITIAL_BACK_INDEX:BACK_LEFT_INDEX]
-        #front_right_lidar_data  = self.scan_cleaned[BACK_RIGHT_INDEX:FINAL_BACK_INDEX]
-        #front_lidar_data        = front_left_lidar_data + front_right_lidar_data
-
-        front_lidar_data = self.scan_cleaned[FRONT_LEFT:FRONT_LEFT_STOP] + self.scan_cleaned[FRONT_RIGHT:FRONT_RIGHT_STOP]
-        right_lidar_data = self.scan_cleaned[RIGHT_FRONT:RIGHT_BACK]
-
-        right_lidar_data = [i for i in right_lidar_data if i != 0.0]
-        #left_lidar_data  = [i for i in left_lidar_data if i != 0.0]
-        #back_lidar_data  = [i for i in back_lidar_data if i != 0.0]
-        front_lidar_data = [i for i in front_lidar_data if i != 0.0]
-
-        #print("Back Lidar Data:")
-        #print(str(back_lidar_data))
-        print("Front Lidar Data:")
-        print(str(front_lidar_data))
-        print("Right Lidar Data:")
-        print(str(back_lidar_data))
-        #print("Left Lidar Data:")
-        #print(str(back_lidar_data))
+        left_lidar_data       = self.scan_cleaned[BACK_LEFT_INDEX:FRONT_LEFT_INDEX]
+        right_lidar_data      = self.scan_cleaned[FRONT_RIGHT_INDEX:BACK_RIGHT_INDEX]
+        front_lidar_data      = self.scan_cleaned[FRONT_LEFT_INDEX:FRONT_RIGHT_INDEX]
+        back_left_lidar_data  = self.scan_cleaned[INITIAL_BACK_INDEX:BACK_LEFT_INDEX]
+        back_right_lidar_data = self.scan_cleaned[BACK_RIGHT_INDEX:FINAL_BACK_INDEX]
+        back_lidar_data       = back_left_lidar_data + back_right_lidar_data
 
         # Get the minimum data to determine robot's state
         min_left_lidar_data  = min(left_lidar_data)
@@ -454,17 +381,15 @@ class WallFollower(Node):
         '''
         wall_detected = False
 
-        front_left_lidar_data  = self.scan_cleaned[FRONT_LEFT:FRONT_LEFT_STOP]
-        front_right_lidar_data = self.scan_cleaned[FRONT_RIGHT:FRONT_RIGHT_STOP]
-        front_lidar_data        = front_left_lidar_data + front_right_lidar_data
+        front_lidar_data      = self.scan_cleaned[FRONT_LEFT_INDEX:FRONT_RIGHT_INDEX]
+        right_lidar_data      = self.scan_cleaned[FRONT_RIGHT_INDEX:BACK_RIGHT_INDEX]
 
         max_front_lidar_data  = max(front_lidar_data)
-
-        print(str(front_lidar_data))
+        max_right_lidar_data  = max(right_lidar_data)
 
         # if the maximum lidar data is the max lidar range, there is an openeing
         # signaling a wall has not yet been found
-        if max_front_lidar_data <= 1:
+        if max_front_lidar_data != 3.5:
             wall_detected = True
 
         return wall_detected
