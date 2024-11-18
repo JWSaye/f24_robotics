@@ -72,5 +72,9 @@ us to develop a wall following algorithm to meet these specifications.
 
 The algorithm begins in a state where it is searching for a wall to follow. It uses a range of lidar scans within its front and right sides to detect if there is an object within
 about a meter of it. If the entire range of the lidar that is sampled is not consistant with the minimum reading, it sees it as an obstacle in the way and attempts to move around it. If
-the whole range of lidars is simalarly small, we call that a wall. When it first detects a wall, the robot spins about 360 degrees to be able to capture any 
+the whole range of lidars is simalarly small, we call that a wall. When it first detects a wall, the robot spins about 360 degrees to be able to capture any AprilTags in the area. It then
+continues to spin about 90 degrees to begin following the wall. The robot will stop every 5-7 meters to spin around another 360 degrees to detect more AprilTags. We chose to do this because
+we wanted to robot to be able to detect as many AprilTags in as few spins as possible. This will aslo allow it to see any AprilTags that may be in the middle of the area facing the walls.
+
+The algorithm has a few corrective states as well. First, when the controller is first started
 
