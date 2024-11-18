@@ -77,8 +77,8 @@ continues to spin about 90 degrees to begin following the wall. The robot will s
 we wanted to robot to be able to detect as many AprilTags in as few spins as possible. This will aslo allow it to see any AprilTags that may be in the middle of the area facing the walls.
 
 The algorithm has a few corrective states as well. First, when the controller is first started, the robot enters a 'wall finder' state. This state makes the robot travel straight until something
-is detected in front of it. If the robot gets stuck in a state where it keeps detecting something in front of it that isn't a wall, it will make moves to turn 90 degrees, go straight, and turn
-back the way it was going originally.
+is detected in front of it. This second state can only be entered after a wall is detected. If the robot gets stuck in a state where it keeps detecting something in front of it that isn't a wall,
+it will make moves to turn 90 degrees, go straight, and turn back the way it was going originally.
 
 To start the AprilTag detection, we attempted to create a launch file, but we couldn't get that working in time. In place of that, I incorperated two system calls into the run file to run the first 
 two given commands used to start the AprilTag detections. I then added a new subscription to the '/detections' topic with a callback to an 'apriltags_detections' function used to log the unique detections.
